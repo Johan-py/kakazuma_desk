@@ -1,0 +1,434 @@
+#!/bin/bash
+
+# kakasuma-cli — Ver anime en español desde la terminal
+# Fuente: jkanime.net  |  Basado en ani-es, version optimizada
+
+VERSION="1.0.0"
+
+# Colores
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+BLUE='\033[0;34m'
+PURPLE='\033[0;35m'
+CYAN='\033[0;36m'
+WHITE='\033[0;37m'
+NC='\033[0m'
+
+BASE_URL="https://jkanime.net"
+UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
+# Si publicas tu propio fork, pon aquí la URL raw del script para habilitar el auto-update.
+UPDATE_URL=""
+
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/kakasuma"
+HISTORY_FILE="$CONFIG_DIR/history.json"
+LEGACY_HISTORY="$HOME/ani-es/history.json"
+
+CONTINUE=0
+CLI_ARGS=""
+TMP_DIR=""
+HISTORY_PICK=0
+
+err()  { printf "${RED}[kakasuma]${NC} %s\n" "$*" >&2; }
+info() { printf "${CYAN}[kakasuma]${NC} %s\n" "$*"; }
+
+http_get() {
+    curl -sL --max-time 40 -A "$UA" -c "$TMP_DIR/cookies.txt" "$1"
+}
+
+detect_env() {
+    if grep -qi microsoft /proc/version 2>/dev/null || [ -n "$WSL_DISTRO_NAME" ]; then
+        echo "wsl"
+    elif [ -n "$PREFIX" ] && [[ "$PREFIX" == *com.termux* ]]; then
+        echo "termux"
+    else
+        echo "linux"
+    fi
+}
+
+check_dependencies() {
+    local missing=() cmd
+    for cmd in curl python3 jq fzf grep sed; do
+        command -v "$cmd" >/dev/null 2>&1 || missing+=("$cmd")
+    done
+    case "$(detect_env)" in
+        wsl)   command -v mpv.exe >/dev/null 2>&1 || missing+=(mpv.exe) ;;
+        termux) : ;;
+        *)     command -v mpv >/dev/null 2>&1 || missing+=(mpv) ;;
+    esac
+    if [[ ${#missing[@]} -gt 0 ]]; then
+        err "Dependencias faltantes: ${missing[*]}"
+        echo -e "${GREEN}Ejecuta el instalador antes de usar este script.${NC}"
+        exit 1
+    fi
+}
+
+init_history() {
+    mkdir -p "$CONFIG_DIR"
+    if [[ -f "$HISTORY_FILE" ]]; then return; fi
+    if [[ -f "$LEGACY_HISTORY" ]]; then
+        cp "$LEGACY_HISTORY" "$HISTORY_FILE"
+        info "Historial de ani-es importado"
+    else
+        echo "{}" > "$HISTORY_FILE"
+    fi
+}
+
+get_history_field() {
+    local anime="$1" field="$2" def="$3"
+    jq -r --arg a "$anime" --arg f "$field" --arg d "$def" \
+        '.[$a][$f] // $d' "$HISTORY_FILE"
+}
+
+save_history() {
+    local anime="$1" cap="$2" progress="$3" tmp
+    tmp=$(mktemp)
+    if jq --arg a "$anime" --arg c "$cap" --arg p "$progress" \
+        '.[$a] = {last_cap: ($c|tonumber), progress: $p}' \
+        "$HISTORY_FILE" > "$tmp"; then
+        mv "$tmp" "$HISTORY_FILE"
+    else
+        rm -f "$tmp"
+    fi
+}
+
+show_help() {
+    echo ""
+    echo "    Uso: kakasuma-cli [opciones] [busqueda]"
+    echo ""
+    echo "    Opciones:"
+    echo "      -h, --help        Mostrar ayuda"
+    echo "      -v, --version     Mostrar versión"
+    echo "      -c, --continue    Continuar el anime donde lo dejaste"
+    echo "      -l, --history     Seleccionar un anime del historial"
+    echo ""
+}
+
+show_version() {
+    echo -e "kakasuma-cli ${PURPLE}v${VERSION}${NC}"
+}
+
+check_update() {
+    [[ -z "$UPDATE_URL" ]] && return 0
+    local remote self tmp
+    remote=$(curl -sL --max-time 20 "$UPDATE_URL") || return 0
+    [[ -z "$remote" ]] && return 0
+    self=$(readlink -f "$0")
+    [[ "$remote" == "$(cat "$self")" ]] && return 0
+    read -rp "Hay una actualización disponible. ¿Actualizar? (y/n): " resp
+    if [[ "$resp" =~ ^[YySs]$ ]]; then
+        tmp=$(mktemp)
+        printf '%s' "$remote" > "$tmp"
+        chmod +x "$tmp"
+        if mv "$tmp" "$self" 2>/dev/null || sudo mv "$tmp" "$self" 2>/dev/null; then
+            info "Script actualizado."
+        else
+            err "Ha ocurrido un error mientras se actualizaba el script."
+        fi
+        rm -f "$tmp"
+        exit 0
+    fi
+}
+
+search_anime() {
+    local q="$1" out="$2" query html
+    query=$(python3 -c 'import sys,urllib.parse; print(urllib.parse.quote(sys.argv[1], safe="").replace("%20","_"))' "$q")
+    html=$(http_get "$BASE_URL/buscar/$query/")
+    python3 - "$html" "$out" <<'PYEOF'
+import re, sys, html as h
+content, out = sys.argv[1], sys.argv[2]
+pairs = re.findall(r'<h5><a\s+href="([^"]+)"[^>]*>([^<]+)</a></h5>', content)
+seen = set()
+with open(out, "w", encoding="utf-8") as f:
+    for url, title in pairs:
+        title = h.unescape(title.strip())
+        key = (url, title)
+        if key in seen:
+            continue
+        seen.add(key)
+        f.write(f"{url}\t{title}\n")
+PYEOF
+}
+
+episode_total() {
+    local token api json total
+    token=$(grep -oP 'meta name="csrf-token" content="\K[^"]+' "$TMP_DIR/anime.html" | head -1)
+    api=$(grep -oP "url:\s*'\Khttps://jkanime\.net/ajax/episodes/\d+/?" "$TMP_DIR/anime.html" | head -1)
+    if [[ -z "$token" || -z "$api" ]]; then
+        echo 0
+        return 1
+    fi
+    json=$(curl -sL --max-time 40 -A "$UA" -b "$TMP_DIR/cookies.txt" \
+        -X POST "$api" \
+        -H "X-Requested-With: XMLHttpRequest" \
+        -H "X-CSRF-TOKEN: $token" \
+        --data-urlencode "_token=$token")
+    total=$(grep -oP '"total":\s*\K\d+' <<<"$json" | head -1)
+    echo "${total:-0}"
+}
+
+extract_video_url() {
+    python3 - "$1" <<'PYEOF'
+import re, sys, base64
+content = sys.argv[1]
+for block in re.findall(r'video:\s*\{.*?\n\s*\}', content, re.S):
+    m = re.search(r"url:\s*'([^']+)'", block)
+    if m:
+        print(m.group(1))
+        sys.exit(0)
+    m = re.search(r"url:\s*atob\('([^']+)'\)", block)
+    if m:
+        try:
+            print(base64.b64decode(m.group(1)).decode())
+            sys.exit(0)
+        except Exception:
+            continue
+sys.exit(1)
+PYEOF
+}
+
+fetch_video_url() {
+    local episode_url="$1" html cand video servers_line mf link
+    html=$(http_get "$episode_url")
+    [[ -z "$html" ]] && return 1
+
+    while IFS= read -r cand; do
+        [[ -z "$cand" ]] && continue
+        [[ "$cand" == *"'+"* ]] && continue
+        [[ "$cand" == *" "* ]] && continue
+        case "$cand" in
+            http*) ;;
+            /*) cand="${BASE_URL}${cand}" ;;
+            *)  cand="${BASE_URL}/${cand}" ;;
+        esac
+        video=$(extract_video_url "$(http_get "$cand")") && {
+            echo "$video"
+            return 0
+        }
+    done < <(grep -oP 'src="\K[^"]*(jkplayer|jk\.php)[^"]*' <<<"$html" | sort -u)
+
+    servers_line=$(grep -oP 'var servers = \[.*?\];' <<<"$html")
+    if [[ -n "$servers_line" ]]; then
+        mf=$(python3 - "$servers_line" <<'PYEOF'
+import re, sys, base64, json
+line = sys.argv[1]
+m = re.search(r'var servers = (.+?);', line)
+if not m:
+    sys.exit(1)
+for server in json.loads(m.group(1)):
+    if server.get("server") == "Mediafire":
+        try:
+            print(base64.b64decode(server["remote"]).decode())
+        except Exception:
+            pass
+        break
+PYEOF
+        )
+        if [[ -n "$mf" ]]; then
+            http_get "$mf" > "$TMP_DIR/mf.html"
+            link=$(grep -oP 'href="\K[^"]*' "$TMP_DIR/mf.html" | grep -m1 'https://download')
+            if [[ -n "$link" ]]; then
+                echo "$link"
+                return 0
+            fi
+        fi
+    fi
+    return 1
+}
+
+play_episode() {
+    local video_url="$1" title="$2" cap="$3" start="$4"
+    local env pos="0"
+    env=$(detect_env)
+    case "$env" in
+        wsl)
+            if command -v mpv.exe >/dev/null 2>&1; then
+                pos=$(mpv.exe --start="$start" -v --msg-level=ffmpeg=no --force-media-title="$title-$cap" "$video_url" 2>&1 |
+                    grep -oE 'AV: [0-9]{2}:[0-9]{2}:[0-9]{2}' | tail -1 | sed 's/AV: //g')
+            else
+                err "mpv.exe no encontrado en el PATH de Windows"
+            fi
+            ;;
+        termux)
+            if pm list packages 2>/dev/null | grep -q 'org.videolan.vlc'; then
+                am start -a android.intent.action.VIEW -d "$video_url" -n org.videolan.vlc/org.videolan.vlc.gui.video.VideoPlayerActivity >/dev/null 2>&1
+            else
+                termux-open-url "$video_url"
+            fi
+            ;;
+        linux)
+            if command -v mpv >/dev/null 2>&1; then
+                pos=$(mpv --start="$start" -v --msg-level=ffmpeg=no --force-media-title="$title-$cap" "$video_url" 2>&1 |
+                    grep -oE 'AV: [0-9]{2}:[0-9]{2}:[0-9]{2}' | tail -1 | sed 's/AV: //g')
+            else
+                err "mpv no está instalado"
+            fi
+            ;;
+    esac
+    pos=${pos:-0}
+    echo "$pos"
+}
+
+watch_episode() {
+    local anime="$1" url="$2" cap="$3" type="$4" total="$5" start_progress="$6"
+    local progress="$start_progress" video_url pos op capurl
+
+    while :; do
+        if [[ "$type" != "Pelicula" ]]; then
+            ((cap < 1)) && cap=1
+            ((cap > total)) && cap="$total"
+        fi
+
+        capurl="$url/$cap/"
+        echo -e "${CYAN}Cargando capítulo $cap...${NC}"
+        video_url=$(fetch_video_url "$capurl")
+        if [[ -z "$video_url" ]]; then
+            err "No se pudo obtener el enlace del video del capítulo $cap."
+            return 2
+        fi
+
+        clear
+        echo -e "Anime: ${GREEN}$anime${NC}"
+        echo -e "Capítulo: ${YELLOW}$cap${NC}"
+        [[ "$type" == "Pelicula" ]] && echo -e "Tipo: ${YELLOW}Película${NC}"
+
+        pos=$(play_episode "$video_url" "$anime" "$cap" "$progress")
+        save_history "$anime" "$cap" "$pos"
+
+        op=$( (echo "Siguiente"; echo "Retroceder"; echo "Cambiar episodio"; echo "Volver a buscar"; echo "Salir") |
+            fzf --prompt="Selecciona una opción: " --height=9 --border --info=inline --margin=1,1,0,0)
+        case "$op" in
+            "Siguiente")
+                if [[ "$type" == "Pelicula" ]]; then
+                    info "Es una película, no hay más capítulos."
+                else
+                    cap=$((cap + 1))
+                    progress="00:00:00"
+                fi
+                ;;
+            "Retroceder")
+                if [[ "$type" == "Pelicula" ]]; then
+                    info "Es una película, no hay capítulos anteriores."
+                else
+                    cap=$((cap - 1))
+                    progress="00:00:00"
+                fi
+                ;;
+            "Cambiar episodio") return 0 ;;
+            "Volver a buscar")   return 2 ;;
+            *)                   return 3 ;;
+        esac
+    done
+}
+
+pick_from_history() {
+    local data="$TMP_DIR/history.tsv" sel
+    jq -r 'to_entries[] | "\(.key)\tCapítulo \(.value.last_cap)\t\(.value.progress)"' "$HISTORY_FILE" 2>/dev/null > "$data"
+    if [[ ! -s "$data" ]]; then
+        echo "No hay historial."
+        return 1
+    fi
+    sel=$(fzf --with-nth=2.. -d $'\t' --prompt="Selecciona un anime: " --height=~20 --border --info=inline --margin=1,1,0,0 < "$data") || return 1
+    CLI_ARGS="${sel%%$'\t'*}"
+    CONTINUE=1
+    return 0
+}
+
+main() {
+    local type total cap start_progress rc anime_url anime_title query selected results n
+
+    while :; do
+        if [[ -n "$CLI_ARGS" ]]; then
+            query="$CLI_ARGS"
+            CLI_ARGS=""
+        else
+            if ! read -rp "Buscar Anime: " query; then
+                break
+            fi
+        fi
+        query=${query//[[:space:]]/ }
+        query="${query#"${query%%[![:space:]]*}"}"
+        query="${query%"${query##*[![:space:]]}"}"
+        [[ -z "$query" ]] && continue
+        clear
+        info "Buscando: $query"
+
+        results="$TMP_DIR/results.tsv"
+        search_anime "$query" "$results"
+        n=$(wc -l < "$results" 2>/dev/null || echo 0)
+        if [[ "$n" -eq 0 ]]; then
+            err "Sin resultados para: $query"
+            continue
+        fi
+
+        selected=$(fzf --with-nth=2.. -d $'\t' --prompt="Selecciona una opción: " --height=~20 --border --info=inline --margin=1,1,0,0 < "$results")
+        [[ -z "$selected" ]] && continue
+
+        anime_url=${selected%%$'\t'*}
+        anime_url=${anime_url%/}
+        anime_title=${selected#*$'\t'}
+
+        clear
+        echo -e "Anime: ${GREEN}$anime_title${NC}"
+        http_get "$anime_url" > "$TMP_DIR/anime.html"
+        type=$(grep -oP '<span>Tipo:</span>\s*\K[^<]+' "$TMP_DIR/anime.html" | tail -1)
+        type=${type:-Serie}
+        total=$(episode_total)
+        [[ "$total" -lt 1 ]] && total=1
+        echo -e "Tipo: ${BLUE}$type${NC} | Capítulos: ${BLUE}$total${NC}"
+
+        while :; do
+            if [[ "$CONTINUE" == 1 ]]; then
+                cap=$(get_history_field "$anime_title" last_cap "1")
+                start_progress=$(get_history_field "$anime_title" progress "00:00:00")
+                CONTINUE=0
+            else
+                start_progress="00:00:00"
+                if [[ "$type" == "Pelicula" ]]; then
+                    cap=1
+                else
+                    cap=$(seq 1 "$total" | fzf --prompt="Episodio: " --height=~30 --border --reverse)
+                    [[ -z "$cap" ]] && break
+                fi
+            fi
+            cap=${cap:-1}
+
+            watch_episode "$anime_title" "$anime_url" "$cap" "$type" "$total" "$start_progress"
+            rc=$?
+            case $rc in
+                3) return 0 ;;
+                2) break ;;
+                0|1) : ;;
+            esac
+        done
+    done
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -h|--help)     show_help; exit 0 ;;
+        -v|--version)  show_version; exit 0 ;;
+        -c|--continue) CONTINUE=1; shift ;;
+        -l|--history)  HISTORY_PICK=1; shift ;;
+        *) break ;;
+    esac
+done
+
+TMP_DIR=$(mktemp -d)
+trap 'rm -rf "$TMP_DIR"; exit' EXIT
+trap 'rm -rf "$TMP_DIR"; exit 130' INT TERM
+
+init_history
+check_dependencies
+[[ -t 0 ]] && check_update
+
+if [[ "$HISTORY_PICK" == 1 ]]; then
+    pick_from_history || exit 1
+fi
+
+if [[ $# -gt 0 ]]; then
+    CLI_ARGS="$*"
+fi
+
+main

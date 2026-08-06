@@ -1,7 +1,6 @@
 #!/bin/bash
 
-# kakasuma-cli — Ver anime en español desde la terminal
-# Fuente: jkanime.net  |  Basado en ani-es, version optimizada
+# kakasuma-cli — Ver anime en español desde la termina
 
 VERSION="1.0.0"
 

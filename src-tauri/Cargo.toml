@@ -1,0 +1,42 @@
+[package]
+name = "kakasuma-desktop"
+version = "0.1.0"
+description = "Kakasuma Desktop - Aplicación de escritorio para ver anime"
+authors = ["Kakasuma"]
+edition = "2021"
+rust-version = "1.77"
+
+[lib]
+name = "kakasuma_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "fs"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "http2", "gzip", "brotli", "deflate", "cookies", "rustls-tls"] }
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "migrate"] }
+scraper = "0.21"
+mpv = "0.2"
+lru = "0.12"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+async-trait = "0.1"
+thiserror = "2"
+chrono = "0.4"
+percent-encoding = "2"
+sha2 = "0.10"
+regex = "1"
+futures-util = "0.3"
+libc = "0.2"
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

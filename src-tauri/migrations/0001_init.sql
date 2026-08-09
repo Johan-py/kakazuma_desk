@@ -1,4 +1,4 @@
--- Modelo Entidad Relación - Kakasuma Desktop
+-- Modelo Entidad Relación - Kakazuma
 -- SQLite con WAL habilitado desde el pool de conexiones.
 
 CREATE TABLE IF NOT EXISTS anime (

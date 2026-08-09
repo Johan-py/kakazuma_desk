@@ -37,7 +37,7 @@ impl SegmentServer {
         let shutdown = Arc::new(AtomicBool::new(false));
         let thread_shutdown = shutdown.clone();
         std::thread::Builder::new()
-            .name("kakasuma-segserver".into())
+            .name("kakazuma-segserver".into())
             .spawn(move || accept_loop(listener, cache_dir, thread_shutdown))
             .map_err(|e| AppError::Cache(format!("no se pudo crear el hilo del servidor local: {e}")))?;
 

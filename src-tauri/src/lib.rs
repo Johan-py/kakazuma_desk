@@ -26,7 +26,7 @@ pub fn run() {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "kakasuma_desktop=info,tauri=warn".into()),
+                .unwrap_or_else(|_| "kakazuma_desk=info,tauri=warn".into()),
         )
         .compact()
         .init();
@@ -41,7 +41,7 @@ pub fn run() {
             std::fs::create_dir_all(&app_data)
                 .map_err(|e| AppError::Config(format!("crear {app_data:?}: {e}")))?;
 
-            let db_path = app_data.join("kakasuma.db");
+            let db_path = app_data.join("kakazuma.db");
 
             let db = tauri::async_runtime::block_on(async {
                 let db = Db::connect(&db_path).await?;
@@ -132,7 +132,7 @@ pub fn run() {
             commands::buffer_pause,
         ])
         .build(tauri::generate_context!())
-        .expect("error al construir la aplicación Kakasuma")
+        .expect("error al construir la aplicación Kakazuma")
         .run(|app_handle, event| {
             use tauri::RunEvent;
             match event {

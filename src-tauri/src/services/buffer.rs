@@ -100,7 +100,7 @@ enum BufferCommand {
 
 /// Servicio de buffer inteligente en segundo plano.
 ///
-/// Corre en su propio hilo (`kakasuma-buffer`) ejecutando un bucle asíncrono
+/// Corre en su propio hilo (`kakazuma-buffer`) ejecutando un bucle asíncrono
 /// que vigila el estado del reproductor, genera la cola de episodios futuros y
 /// descarga un porcentaje de cada uno a disco. Nunca bloquea el hilo de libmpv
 /// ni el IPC; solo lee el estado compartido del reproductor.
@@ -150,7 +150,7 @@ impl BufferService {
         let thread_cache = cache.clone();
         let thread_settings = settings.clone();
         std::thread::Builder::new()
-            .name("kakasuma-buffer".into())
+            .name("kakazuma-buffer".into())
             .spawn(move || {
                 rt.block_on(buffer_loop(
                     app,

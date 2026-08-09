@@ -1,4 +1,4 @@
-# Kakasuma
+# Kakazuma
 
 Aplicación de escritorio para ver anime en español. Evolución del CLI original
 (`legacy/`) a una app nativa construida con **Tauri 2** (Rust) + **React** (TypeScript).

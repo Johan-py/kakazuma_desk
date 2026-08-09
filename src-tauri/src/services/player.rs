@@ -78,7 +78,7 @@ impl PlayerService {
 
         let thread_state = state.clone();
         std::thread::Builder::new()
-            .name("kakasuma-mpv".into())
+            .name("kakazuma-mpv".into())
             .spawn(move || {
                 player_loop(rx, thread_state, app, pool, rt);
             })

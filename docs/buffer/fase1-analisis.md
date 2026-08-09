@@ -1,6 +1,6 @@
 # Fase 1 — Análisis técnico: Background Smart Buffer
 
-> Sistema opcional de precarga en segundo plano para Kakasuma.
+> Sistema opcional de precarga en segundo plano para Kakazuma.
 > Objetivo: reducir microcortes, fluctuaciones de red y tiempos de espera al cambiar de episodio.
 > NO es descarga completa de episodios ni sistema P2P.
 
@@ -21,14 +21,14 @@ UI (play_episode) ─► IPC ─► commands::play_episode
                               ▼
                        VideoSource { url: HLS } ─► PlayerService.play(url)
                               ▼
-                       hilo "kakasuma-mpv" → libmpv loadfile(url)   [MPV baja HLS por su cuenta]
+                       hilo "kakazuma-mpv" → libmpv loadfile(url)   [MPV baja HLS por su cuenta]
 ```
 
 ### Componentes clave (con referencias)
 
 | Componente | Archivo | Rol | Observaciones para el buffer |
 |---|---|---|---|
-| `PlayerService` | `src-tauri/src/services/player.rs` | Hilo dedicado `kakasuma-mpv` ejecutando libmpv. Comandos por canal `std::sync::mpsc`, estado en `Arc<Mutex<PlayerState>>`, poll cada 1 s | No se debe tocar su bucle crítico. Expone `state` compartido que el buffer puede leer. No configura caché de mpv |
+| `PlayerService` | `src-tauri/src/services/player.rs` | Hilo dedicado `kakazuma-mpv` ejecutando libmpv. Comandos por canal `std::sync::mpsc`, estado en `Arc<Mutex<PlayerState>>`, poll cada 1 s | No se debe tocar su bucle crítico. Expone `state` compartido que el buffer puede leer. No configura caché de mpv |
 | `AnimeService::resolve_video` | `services/anime.rs:178` | Resuelve URL HLS por episodio (sin caché, expira) | Reutilizable por el buffer para episodios futuros |
 | `HttpClient` | `infra/http.rs` | reqwest 0.12: keep-alive, HTTP/2, cookies, retry con backoff | Reutilizar; añadir método de streaming para segmentos |
 | Cachés | `infra/cache.rs` | `TtlCache` (mem LRU) y `DiskCache` (JSON + SHA256 + TTL mtime) | No aptos para segmentos binarios; crear caché específica de segmentos |

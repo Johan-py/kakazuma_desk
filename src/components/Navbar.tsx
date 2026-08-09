@@ -26,7 +26,7 @@ export function Navbar() {
           className="text-2xl font-black tracking-tight"
           style={{ color: "#E50914" }}
         >
-          KAKASUMA
+          KAKAZUMA
         </button>
         <nav className="flex items-center gap-1">
           {TABS.map((t) => (

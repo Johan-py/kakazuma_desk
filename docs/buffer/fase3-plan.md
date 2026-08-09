@@ -37,7 +37,7 @@ Orden de trabajo con verificación incremental. Cada paso compila.
 - **Verificar**: `cargo test`.
 
 ## Paso 4 — services/buffer.rs (servicio y worker)
-- `BufferCommand` canal de control; hilo `kakasuma-buffer` con `rt.block_on(buffer_loop)`.
+- `BufferCommand` canal de control; hilo `kakazuma-buffer` con `rt.block_on(buffer_loop)`.
 - Bucle 1 s: lectura de `PlayerState`, detección de trigger, generación de cola acotada, arranque de 1 `download_job`, condiciones de pausa (bitmask), emisión de `buffer://status`.
 - `download_job`: resolve_video → nivel → rango → descarga secuencial con token bucket (reqwest `stream`) → manifest.json.
 - `resolve_playback_url`: validación de frescura + playlist híbrida + fallback remoto.

@@ -162,7 +162,7 @@ enum BufferCommand {
 }
 ```
 
-**Diseño del worker**: `BufferService::spawn(...)` crea un hilo ligero (`std::thread`, nombre `kakasuma-buffer`) cuyo único trabajo es ejecutar `rt.block_on(buffer_loop(...))`. De esta forma el bucle vive fuera del runtime de Tauri sin bloquear IPC y puede usar Tokio internamente (tareas, sleep, timeouts).
+**Diseño del worker**: `BufferService::spawn(...)` crea un hilo ligero (`std::thread`, nombre `kakazuma-buffer`) cuyo único trabajo es ejecutar `rt.block_on(buffer_loop(...))`. De esta forma el bucle vive fuera del runtime de Tauri sin bloquear IPC y puede usar Tokio internamente (tareas, sleep, timeouts).
 
 `buffer_loop` (bucle principal, cadencia 1 s):
 1. Procesa comandos del canal (config changed, clear, shutdown).
@@ -283,7 +283,7 @@ Carga en `setup()`: si `smart_buffer` no existe → se inserta con defaults. Cla
 
 ## 2.7 Ciclo de vida y shutdown
 
-- `BufferService::spawn`: crea `JoinSet` interno, hilo `kakasuma-buffer` con `rt.block_on`.
+- `BufferService::spawn`: crea `JoinSet` interno, hilo `kakazuma-buffer` con `rt.block_on`.
 - `BufferCommand::Shutdown` en `RunEvent::Exit/ExitRequested` (lib.rs): aborta tasks del JoinSet (drop) y el bucle sale. Timeout de espera 2 s.
 - `Drop` de `BufferService` aborta todo (seguridad ante cierre abrupto).
 - Al **desactivar** (config): se abortan jobs activos y se vacía la cola (no la caché en disco, que se reutiliza). Al **limpiar caché**: borrado del directorio.

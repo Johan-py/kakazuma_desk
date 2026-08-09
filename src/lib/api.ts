@@ -2,6 +2,8 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   Anime,
   AnimeDetail,
+  BufferConfig,
+  BufferStatus,
   CatalogFilter,
   CatalogPage,
   FavoriteEntry,
@@ -64,4 +66,10 @@ export const api = {
   playerFullscreen: (enabled: boolean) => call<void>("player_fullscreen", { enabled }),
   playerStop: () => call<void>("player_stop"),
   playerGetState: () => call<PlayerState>("player_get_state"),
+
+  bufferGetConfig: () => call<BufferConfig>("buffer_get_config"),
+  bufferSetConfig: (config: BufferConfig) => call<BufferConfig>("buffer_set_config", { config }),
+  bufferGetStatus: () => call<BufferStatus>("buffer_get_status"),
+  bufferClearCache: () => call<number>("buffer_clear_cache"),
+  bufferPause: (paused: boolean) => call<void>("buffer_pause", { paused }),
 };

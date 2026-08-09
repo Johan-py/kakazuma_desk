@@ -9,13 +9,16 @@ mod error;
 mod infra;
 mod provider;
 mod services;
+mod settings;
 mod state;
 use crate::error::AppError;
 use crate::infra::cache::{CacheRegistry, DiskCache};
 use crate::infra::db::Db;
 use crate::infra::http::{HttpClient, HttpConfig};
+use crate::infra::segcache::SegmentCache;
 use crate::provider::{JKAnimeProvider, Provider};
-use crate::services::{AnimeService, FavoriteService, HistoryService, PlayerCommand, PlayerService};
+use crate::services::{AnimeService, BufferService, FavoriteService, HistoryService, PlayerCommand, PlayerService};
+use crate::settings::SettingsService;
 use crate::state::AppState;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -55,18 +58,43 @@ pub fn run() {
             let mut registry = CacheRegistry::new();
             registry.register("genres", Duration::from_secs(24 * 3600));
 
-            let anime = AnimeService::new(provider.clone(), http, disk, pool.clone());
+            let settings = std::sync::Arc::new(SettingsService::new(pool.clone()));
+            tauri::async_runtime::block_on(async { settings.load().await })?;
+
+            let anime = std::sync::Arc::new(AnimeService::new(
+                provider.clone(),
+                http.clone(),
+                disk,
+                pool.clone(),
+            ));
             let history = HistoryService::new(pool.clone());
             let favorites = FavoriteService::new(pool.clone());
 
+            let buffer_cache = std::sync::Arc::new(SegmentCache::new(&app_data, "buffer")?);
+            let cfg = settings.config();
+            buffer_cache.set_limit(cfg.buffer_cache_limit_mb);
+
             let rt = tauri::async_runtime::handle();
-            let player = PlayerService::spawn(app_handle.clone(), pool.clone(), rt);
+            let player = PlayerService::spawn(app_handle.clone(), pool.clone(), rt.clone());
+            let player_state = player.state_handle();
+            let buffer = BufferService::spawn(
+                app_handle.clone(),
+                anime.clone(),
+                pool.clone(),
+                http,
+                buffer_cache,
+                settings.clone(),
+                player_state,
+                rt,
+            );
 
             app_handle.manage(AppState {
                 anime,
                 history,
                 favorites,
                 player: Mutex::new(player),
+                settings,
+                buffer,
             });
             let _ = &registry;
             Ok(())
@@ -97,6 +125,11 @@ pub fn run() {
             commands::player_fullscreen,
             commands::player_stop,
             commands::player_get_state,
+            commands::buffer_get_config,
+            commands::buffer_set_config,
+            commands::buffer_get_status,
+            commands::buffer_clear_cache,
+            commands::buffer_pause,
         ])
         .build(tauri::generate_context!())
         .expect("error al construir la aplicación Kakasuma")
@@ -108,6 +141,7 @@ pub fn run() {
                         if let Ok(player) = state.player.lock() {
                             player.send(PlayerCommand::Stop);
                         }
+                        state.buffer.shutdown();
                     }
                 }
                 _ => {}

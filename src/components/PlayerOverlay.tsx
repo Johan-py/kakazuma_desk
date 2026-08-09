@@ -14,6 +14,7 @@ function fmt(t: number): string {
 
 export function PlayerOverlay() {
   const player = useAppStore((s) => s.player);
+  const buffer = useAppStore((s) => s.buffer);
   const visible = player.loaded && !player.fullscreen;
   const [drag, setDrag] = useState(false);
   const [scrub, setScrub] = useState(0);
@@ -106,6 +107,22 @@ export function PlayerOverlay() {
       </div>
       {player.error && (
         <p className="mt-2 text-center text-xs text-primary">{player.error}</p>
+      )}
+      {buffer.enabled && buffer.current_episode && (
+        <div className="mx-auto mt-2 flex max-w-[1400px] items-center gap-2 text-[11px] text-muted">
+          <span className="shrink-0">Buffer</span>
+          <div className="h-1 w-40 overflow-hidden rounded-full bg-surface-hover">
+            <div
+              className="h-full rounded-full bg-emerald-500/80"
+              style={{
+                width: `${Math.max(0, Math.min(100, buffer.current_episode.percent_done))}%`,
+              }}
+            />
+          </div>
+          <span className="shrink-0 tabular-nums">
+            {buffer.current_episode.percent_done}% · {buffer.queue.length} en cola
+          </span>
+        </div>
       )}
     </div>
   );

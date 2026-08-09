@@ -12,15 +12,17 @@ import { useAppStore } from "./stores/useAppStore";
 export default function App() {
   const view = useAppStore((s) => s.view);
   const initPlayer = useAppStore((s) => s.initPlayer);
+  const initBuffer = useAppStore((s) => s.initBuffer);
   const loadTags = useAppStore((s) => s.loadTags);
 
   useEffect(() => {
     initPlayer();
+    initBuffer();
     loadTags();
     useAppStore.getState().loadHome();
     useAppStore.getState().loadHistory();
     useAppStore.getState().loadFavorites();
-  }, [initPlayer, loadTags]);
+  }, [initPlayer, initBuffer, loadTags]);
 
   return (
     <div className="min-h-full">

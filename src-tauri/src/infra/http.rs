@@ -75,14 +75,32 @@ impl HttpClient {
     }
 
     /// GET con retry exponencial; devuelve el body como String.
-    pub async fn get_text(&self, url: &str) -> AppResult<String> {
-        let body = self.get_with_retry(url).await?;
+    pub async fn get_text(&self, url: &str) -> AppResult<String> {        let body = self.get_with_retry(url).await?;
         String::from_utf8(body).map_err(|e| AppError::Http(format!("respuesta no UTF-8: {e}")))
     }
 
     /// GET con retry exponencial; devuelve el body como bytes.
     pub async fn get_bytes(&self, url: &str) -> AppResult<Vec<u8>> {
         self.get_with_retry(url).await
+    }
+
+    /// GET sin retry para streaming (los reintentos los gestiona el llamante).
+    /// Devuelve la respuesta con el body abierto.
+    pub async fn get_response(&self, url: &str) -> AppResult<reqwest::Response> {
+        let resp = self
+            .client
+            .get(url)
+            .send()
+            .await
+            .map_err(|e| AppError::Http(format!("GET {url} falló: {e}")))?;
+        let status = resp.status();
+        if status == StatusCode::NOT_FOUND {
+            return Err(AppError::NotFound(url.to_string()));
+        }
+        if status != StatusCode::OK {
+            return Err(AppError::Http(format!("GET {url} devolvió {status}")));
+        }
+        Ok(resp)
     }
 
     /// GET y deserializa JSON.

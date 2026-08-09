@@ -4,6 +4,8 @@ import { api } from "../lib/api";
 import type {
   Anime,
   AnimeDetail,
+  BufferConfig,
+  BufferStatus,
   CatalogFilter,
   CatalogPage,
   PlayerProgressEvent,
@@ -70,6 +72,12 @@ interface AppStore {
   playerVisible: boolean;
   initPlayer: () => Promise<void>;
   refreshPlayer: () => Promise<void>;
+
+  buffer: BufferStatus;
+  bufferConfig: BufferConfig | null;
+  bufferLoading: boolean;
+  loadBuffer: () => Promise<void>;
+  initBuffer: () => Promise<void>;
 }
 
 export const useAppStore = create<AppStore>((set, get) => ({
@@ -242,5 +250,34 @@ export const useAppStore = create<AppStore>((set, get) => ({
     } catch {
       // sin reproductor disponible
     }
+  },
+
+  buffer: {
+    enabled: false,
+    paused: false,
+    pause_reasons: [],
+    cache_bytes: 0,
+    cache_limit_bytes: 0,
+    current_episode: null,
+    queue: [],
+  },
+  bufferConfig: null,
+  bufferLoading: false,
+  loadBuffer: async () => {
+    set({ bufferLoading: true });
+    try {
+      const [status, config] = await Promise.all([api.bufferGetStatus(), api.bufferGetConfig()]);
+      set({ buffer: status, bufferConfig: config, bufferLoading: false });
+    } catch (e) {
+      console.error(e);
+      set({ bufferLoading: false });
+    }
+  },
+  initBuffer: async () => {
+    await get().loadBuffer();
+    const onStatus = await listen<BufferStatus>("buffer://status", (e) => {
+      set({ buffer: e.payload });
+    });
+    window.__unlisteners = [...(window.__unlisteners ?? []), onStatus];
   },
 }));

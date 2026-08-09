@@ -8,7 +8,6 @@ use tauri::Emitter;
 use tauri::AppHandle;
 use tracing::{debug, error, info, warn};
 
-use crate::domain::VideoSource;
 use crate::infra::repos::HistoryRepo;
 
 /// Progreso guardado cada N segundos de reproducción.
@@ -41,6 +40,7 @@ pub enum PlayerCommand {
 pub struct PlayerState {
     pub loaded: bool,
     pub playing: bool,
+    pub buffering: bool,
     pub position: f64,
     pub duration: f64,
     pub speed: f64,
@@ -96,11 +96,16 @@ impl PlayerService {
         self.state.lock().map(|s| s.clone()).unwrap_or_default()
     }
 
-    pub fn play(&self, slug: &str, number: i32, source: VideoSource, title: &str, start: f64) {
+    /// Referencia compartida al estado del reproductor (para el buffer).
+    pub fn state_handle(&self) -> Arc<Mutex<PlayerState>> {
+        self.state.clone()
+    }
+
+    pub fn play(&self, slug: &str, number: i32, url: &str, title: &str, start: f64) {
         self.send(PlayerCommand::Play {
             slug: slug.to_string(),
             number,
-            url: source.url,
+            url: url.to_string(),
             title: title.to_string(),
             start,
         });
@@ -125,6 +130,13 @@ fn player_loop(
             let _ = builder.set_option("input-vo-keyboard", true);
             let _ = builder.set_option("osc", true);
             let _ = builder.set_option("force-window", "no");
+            // Cache del demuxer para suavizar fluctuaciones de red del
+            // episodio en curso (complementa al Smart Buffer).
+            let _ = builder.set_option("cache", "yes");
+            let _ = builder.set_option("cache-secs", 300i64);
+            let _ = builder.set_option("demuxer-max-bytes", 536_870_912i64); // 512 MiB
+            let _ = builder.set_option("demuxer-max-back-bytes", 134_217_728i64); // 128 MiB
+            let _ = builder.set_option("demuxer-readahead-secs", 120i64);
             match builder.build() {
                 Ok(m) => Box::new(m),
                 Err(e) => {
@@ -173,10 +185,11 @@ fn player_loop(
         if let Ok(loaded) = mpv.get_property::<bool>("idle-active") {
             let _ = loaded;
         }
-        if let (Ok(pos), Ok(dur), Ok(pause)) = (
+        if let (Ok(pos), Ok(dur), Ok(pause), Ok(buffering)) = (
             mpv.get_property::<f64>("time-pos"),
             mpv.get_property::<f64>("duration"),
             mpv.get_property::<bool>("pause"),
+            mpv.get_property::<bool>("paused-for-cache"),
         ) {
             let dur = dur.max(0.0);
             let pos = pos.max(0.0);
@@ -185,6 +198,7 @@ fn player_loop(
             s.duration = dur;
             s.playing = !pause && dur > 0.0;
             s.loaded = dur > 0.0;
+            s.buffering = buffering;
         }
         emit_state(&state, &app);
 
@@ -303,6 +317,7 @@ fn apply_command(
                 s.position = *start;
                 s.loaded = false;
                 s.playing = false;
+                s.buffering = false;
             }
             *current = Some((slug.clone(), *number));
             let _ = mpv.command(&["loadfile", url.as_str(), "replace"]);

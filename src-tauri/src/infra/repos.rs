@@ -326,6 +326,37 @@ impl FavoriteRepo {
     }
 }
 
+pub struct SettingsRepo;
+
+impl SettingsRepo {
+    /// Lee el valor crudo de una clave de configuración.
+    pub async fn get(pool: &SqlitePool, key: &str) -> AppResult<Option<String>> {
+        let row = sqlx::query("SELECT value FROM settings WHERE key = ?1")
+            .bind(key)
+            .fetch_optional(pool)
+            .await
+            .map_err(db_err)?;
+        Ok(row.map(|r| r.get::<String, _>("value")))
+    }
+
+    /// Inserta o actualiza una clave de configuración.
+    pub async fn set(pool: &SqlitePool, key: &str, value: &str) -> AppResult<()> {
+        sqlx::query(
+            r#"
+            INSERT INTO settings (key, value, updated_at)
+            VALUES (?1, ?2, unixepoch())
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = unixepoch()
+            "#,
+        )
+        .bind(key)
+        .bind(value)
+        .execute(pool)
+        .await
+        .map_err(db_err)?;
+        Ok(())
+    }
+}
+
 // ---------- utilidades de mapeo ----------
 
 fn db_err(e: sqlx::Error) -> AppError {

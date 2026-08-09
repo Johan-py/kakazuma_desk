@@ -2,7 +2,8 @@ use tauri::State;
 
 use crate::domain::{Anime, AnimeDetail, CatalogFilter, CatalogPage, FavoriteEntry, Tag, VideoSource, WatchHistoryEntry};
 use crate::error::AppError;
-use crate::services::PlayerCommand;
+use crate::services::{BufferStatus, PlayerCommand};
+use crate::settings::BufferConfig;
 use crate::state::AppState;
 
 /// Busca animes en el proveedor.
@@ -112,9 +113,46 @@ pub async fn play_episode(
     start: f64,
 ) -> Result<VideoSource, AppError> {
     let source = state.anime.resolve_video(&slug, number).await?;
+    let url = state.buffer.resolve_playback_url(&source, &slug, number).await;
     let player = state.player.lock().unwrap();
-    player.play(&slug, number, source.clone(), &title, start);
+    player.play(&slug, number, &url, &title, start);
     Ok(source)
+}
+
+/// Smart Buffer: configuración.
+#[tauri::command]
+pub fn buffer_get_config(state: State<'_, AppState>) -> BufferConfig {
+    state.settings.config()
+}
+
+#[tauri::command]
+pub async fn buffer_set_config(
+    state: State<'_, AppState>,
+    config: BufferConfig,
+) -> Result<BufferConfig, AppError> {
+    let cfg = state.settings.set_config(config).await?;
+    state.buffer.config_changed();
+    Ok(cfg)
+}
+
+/// Smart Buffer: estado observable por la UI.
+#[tauri::command]
+pub fn buffer_get_status(state: State<'_, AppState>) -> BufferStatus {
+    state.buffer.status()
+}
+
+/// Smart Buffer: limpia la caché y devuelve los bytes liberados.
+#[tauri::command]
+pub fn buffer_clear_cache(state: State<'_, AppState>) -> Result<u64, AppError> {
+    let freed = state.buffer.cache().clear()?;
+    state.buffer.clear_cache();
+    Ok(freed)
+}
+
+/// Smart Buffer: pausa/resume manual de las descargas.
+#[tauri::command]
+pub fn buffer_pause(state: State<'_, AppState>, paused: bool) {
+    state.buffer.set_manual_pause(paused);
 }
 
 /// Controles del reproductor.

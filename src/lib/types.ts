@@ -99,3 +99,34 @@ export interface PlayerProgressEvent {
   position: number;
   duration: number;
 }
+
+export interface BufferedEpisode {
+  slug: string;
+  number: number;
+  percent_done: number;
+  segments_total: number;
+  segments_done: number;
+  bytes: number;
+  state: string;
+  error: string | null;
+}
+
+export interface BufferStatus {
+  enabled: boolean;
+  paused: boolean;
+  pause_reasons: string[];
+  cache_bytes: number;
+  cache_limit_bytes: number;
+  current_episode: BufferedEpisode | null;
+  queue: BufferedEpisode[];
+}
+
+export interface BufferConfig {
+  smart_buffer_enabled: boolean;
+  buffer_episode_count: number;
+  buffer_percentage: number;
+  buffer_cache_limit_mb: number;
+  buffer_bandwidth_limit_mbps: number;
+  buffer_trigger_percent: number;
+  buffer_cpu_threshold_percent: number;
+}

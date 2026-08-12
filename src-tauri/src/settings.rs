@@ -6,9 +6,13 @@ use tracing::debug;
 
 use crate::error::{AppError, AppResult};
 use crate::infra::repos::SettingsRepo;
+use crate::provider::{PROVIDER_JKANIME, ProviderRegistry};
 
 /// Clave en la tabla `settings` donde se guarda la configuración del buffer.
 pub const SETTINGS_KEY_SMART_BUFFER: &str = "smart_buffer";
+
+/// Clave donde se guarda el proveedor por defecto.
+pub const SETTINGS_KEY_PROVIDER: &str = "default_provider";
 
 /// Configuración persistente del Smart Buffer.
 ///
@@ -63,6 +67,7 @@ impl BufferConfig {
 /// Servicio de configuración persistente con caché en memoria.
 pub struct SettingsService {
     inner: Arc<RwLock<BufferConfig>>,
+    provider: Arc<RwLock<String>>,
     pool: SqlitePool,
 }
 
@@ -70,6 +75,7 @@ impl SettingsService {
     pub fn new(pool: SqlitePool) -> Self {
         Self {
             inner: Arc::new(RwLock::new(BufferConfig::default())),
+            provider: Arc::new(RwLock::new(PROVIDER_JKANIME.to_string())),
             pool,
         }
     }
@@ -92,7 +98,50 @@ impl SettingsService {
         };
         self.apply(&cfg);
         debug!(?cfg, "config de buffer cargada");
+
+        self.load_provider().await?;
         Ok(cfg)
+    }
+
+    /// Carga el proveedor por defecto persistido (valida contra el registro).
+    pub async fn load_provider(&self) -> AppResult<String> {
+        let key = match SettingsRepo::get(&self.pool, SETTINGS_KEY_PROVIDER).await? {
+            Some(k) if !k.trim().is_empty() => k,
+            _ => PROVIDER_JKANIME.to_string(),
+        };
+        let key = if ProviderRegistry::valid_key(&key) {
+            key
+        } else {
+            PROVIDER_JKANIME.to_string()
+        };
+        if let Ok(mut p) = self.provider.write() {
+            *p = key.clone();
+        }
+        debug!(provider = %key, "proveedor por defecto cargado");
+        Ok(key)
+    }
+
+    /// Proveedor por defecto actual (clave).
+    pub fn provider_key(&self) -> String {
+        self.provider
+            .read()
+            .map(|p| p.clone())
+            .unwrap_or_else(|_| PROVIDER_JKANIME.to_string())
+    }
+
+    /// Persiste y aplica un nuevo proveedor por defecto.
+    pub async fn set_provider_key(&self, key: &str) -> AppResult<String> {
+        if !ProviderRegistry::valid_key(key) {
+            return Err(AppError::Config(format!(
+                "proveedor desconocido: {key}"
+            )));
+        }
+        SettingsRepo::set(&self.pool, SETTINGS_KEY_PROVIDER, key).await?;
+        if let Ok(mut p) = self.provider.write() {
+            *p = key.to_string();
+        }
+        debug!(provider = %key, "proveedor por defecto actualizado");
+        Ok(key.to_string())
     }
 
     /// Clona la configuración en memoria (rápido, sin IO).

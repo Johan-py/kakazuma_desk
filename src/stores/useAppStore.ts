@@ -10,11 +10,12 @@ import type {
   CatalogPage,
   PlayerProgressEvent,
   PlayerState,
+  ProviderInfo,
   Tag,
   WatchHistoryEntry,
 } from "../lib/types";
 
-export type View = "home" | "catalog" | "search" | "favorites" | "history" | "detail";
+export type View = "home" | "catalog" | "search" | "favorites" | "history" | "detail" | "settings";
 
 export const DEFAULT_FILTER: CatalogFilter = {
   genero: null,
@@ -29,6 +30,8 @@ export const DEFAULT_FILTER: CatalogFilter = {
 interface AppStore {
   view: View;
   setView: (v: View) => void;
+  prevView: View;
+  goBack: () => void;
 
   detail: AnimeDetail | null;
   detailLoading: boolean;
@@ -78,17 +81,32 @@ interface AppStore {
   bufferLoading: boolean;
   loadBuffer: () => Promise<void>;
   initBuffer: () => Promise<void>;
+
+  provider: ProviderInfo | null;
+  providerLoading: boolean;
+  loadProvider: () => Promise<void>;
+  setProvider: (key: string) => Promise<void>;
 }
 
 export const useAppStore = create<AppStore>((set, get) => ({
   view: "home",
   setView: (v) => set({ view: v }),
+  prevView: "home",
+  goBack: () => {
+    const prev = get().prevView;
+    const wasDetail = get().view === "detail";
+    if (wasDetail) get().closeDetail();
+    if (prev === "home") get().loadHome();
+    if (prev === "favorites") get().loadFavorites();
+    if (prev === "history") get().loadHistory();
+    set({ view: prev });
+  },
 
   detail: null,
   detailLoading: false,
   detailError: null,
   openDetail: async (slug) => {
-    set({ detailLoading: true, detailError: null, view: "detail" });
+    set({ prevView: get().view, detailLoading: true, detailError: null, view: "detail" });
     try {
       const detail = await api.getAnimeDetail(slug);
       set({ detail, detailLoading: false });
@@ -211,6 +229,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
   },
 
   player: {
+    session_id: 0,
+    phase: "idle",
     loaded: false,
     playing: false,
     position: 0,
@@ -230,10 +250,15 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const onState = await listen<PlayerState>("player://state", (e) => {
       set({ player: e.payload });
     });
-    const onProgress = await listen<PlayerProgressEvent>("player://progress", () => {
+    const onProgress = await listen<PlayerProgressEvent>("player://progress", (e) => {
+      // Segunda barrera de protección: descartar eventos de sesiones antiguas.
+      if (e.payload.session_id < get().player.session_id) return;
       get().refreshPlayer();
     });
-    const onEnd = await listen<PlayerProgressEvent>("player://end", () => {
+    const onEnd = await listen<PlayerProgressEvent>("player://end", (e) => {
+      // Un `player://end` de una reproducción anterior no debe mostrar el
+      // episodio actual como finalizado.
+      if (e.payload.session_id < get().player.session_id) return;
       const p = { ...get().player, playing: false };
       set({ player: p });
       get().loadHistory();
@@ -279,5 +304,40 @@ export const useAppStore = create<AppStore>((set, get) => ({
       set({ buffer: e.payload });
     });
     window.__unlisteners = [...(window.__unlisteners ?? []), onStatus];
+  },
+
+  provider: null,
+  providerLoading: false,
+  loadProvider: async () => {
+    try {
+      const info = await api.getProvider();
+      set({ provider: info });
+    } catch (e) {
+      console.error(e);
+    }
+  },
+  setProvider: async (key) => {
+    if (get().providerLoading) return;
+    set({ providerLoading: true });
+    try {
+      const info = await api.setProvider(key);
+      set({ provider: info });
+      // El contenido cacheado pertenece a la fuente anterior: recargar la UI.
+      set({
+        recent: [],
+        recommended: [],
+        tags: [],
+        catalog: null,
+        detail: null,
+        searchResults: [],
+      });
+      get().loadHome();
+      get().loadTags();
+      if (get().view === "catalog") get().loadCatalog(1);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      set({ providerLoading: false });
+    }
   },
 }));

@@ -91,3 +91,17 @@ pub struct CatalogPage {
     pub per_page: u32,
     pub last_page: u32,
 }
+
+/// Opción de fuente para el selector de la UI.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProviderOption {
+    pub key: String,
+    pub name: String,
+}
+
+/// Proveedor configurado como fuente por defecto y opciones disponibles.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProviderInfo {
+    pub current: String,
+    pub available: Vec<ProviderOption>,
+}

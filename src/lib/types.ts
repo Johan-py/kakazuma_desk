@@ -78,7 +78,28 @@ export interface CatalogPage {
   last_page: number;
 }
 
+export interface ProviderOption {
+  key: string;
+  name: string;
+}
+
+export interface ProviderInfo {
+  current: string;
+  available: ProviderOption[];
+}
+
+export type PlayerPhase =
+  | "idle"
+  | "loading"
+  | "playing"
+  | "paused"
+  | "buffering"
+  | "stopping"
+  | "error";
+
 export interface PlayerState {
+  session_id: number;
+  phase: PlayerPhase;
   loaded: boolean;
   playing: boolean;
   position: number;
@@ -94,6 +115,7 @@ export interface PlayerState {
 }
 
 export interface PlayerProgressEvent {
+  session_id: number;
   slug: string;
   number: number;
   position: number;

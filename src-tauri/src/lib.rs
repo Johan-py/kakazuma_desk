@@ -16,7 +16,7 @@ use crate::infra::cache::{CacheRegistry, DiskCache};
 use crate::infra::db::Db;
 use crate::infra::http::{HttpClient, HttpConfig};
 use crate::infra::segcache::SegmentCache;
-use crate::provider::{JKAnimeProvider, Provider};
+use crate::provider::ProviderRegistry;
 use crate::services::{AnimeService, BufferService, FavoriteService, HistoryService, PlayerCommand, PlayerService};
 use crate::settings::SettingsService;
 use crate::state::AppState;
@@ -51,8 +51,7 @@ pub fn run() {
             let pool = db.pool().clone();
 
             let http = HttpClient::new(HttpConfig::default())?;
-            let provider: std::sync::Arc<dyn Provider> =
-                std::sync::Arc::new(JKAnimeProvider::new(http.clone()));
+            let providers = std::sync::Arc::new(ProviderRegistry::new(http.clone()));
 
             let disk = DiskCache::new(&app_data, "cache", Duration::from_secs(15 * 60))?;
             let mut registry = CacheRegistry::new();
@@ -60,9 +59,11 @@ pub fn run() {
 
             let settings = std::sync::Arc::new(SettingsService::new(pool.clone()));
             tauri::async_runtime::block_on(async { settings.load().await })?;
+            // El proveedor por defecto persistido pasa a ser el activo.
+            providers.set_default(&settings.provider_key());
 
             let anime = std::sync::Arc::new(AnimeService::new(
-                provider.clone(),
+                providers.clone(),
                 http.clone(),
                 disk,
                 pool.clone(),
@@ -95,12 +96,15 @@ pub fn run() {
                 player: Mutex::new(player),
                 settings,
                 buffer,
+                provider: providers,
             });
             let _ = &registry;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             commands::search_anime,
+            commands::get_provider,
+            commands::set_provider,
             commands::get_anime_detail,
             commands::get_catalog,
             commands::get_tags,

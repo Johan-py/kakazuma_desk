@@ -8,6 +8,7 @@ import type {
   CatalogPage,
   FavoriteEntry,
   PlayerState,
+  ProviderInfo,
   Tag,
   VideoSource,
   WatchHistoryEntry,
@@ -23,6 +24,11 @@ async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> 
 
 export const api = {
   searchAnime: (query: string) => call<Anime[]>("search_anime", { query }),
+
+  getProvider: () => call<ProviderInfo>("get_provider"),
+
+  setProvider: (provider: string) =>
+    call<ProviderInfo>("set_provider", { provider }),
 
   getAnimeDetail: (slug: string) => call<AnimeDetail>("get_anime_detail", { slug }),
 

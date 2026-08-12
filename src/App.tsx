@@ -6,6 +6,7 @@ import { SearchView } from "./components/SearchView";
 import { FavoritesView } from "./components/FavoritesView";
 import { HistoryView } from "./components/HistoryView";
 import { DetailView } from "./components/DetailView";
+import { SettingsView } from "./components/SettingsView";
 import { PlayerOverlay } from "./components/PlayerOverlay";
 import { useAppStore } from "./stores/useAppStore";
 
@@ -19,6 +20,7 @@ export default function App() {
     initPlayer();
     initBuffer();
     loadTags();
+    useAppStore.getState().loadProvider();
     useAppStore.getState().loadHome();
     useAppStore.getState().loadHistory();
     useAppStore.getState().loadFavorites();
@@ -34,6 +36,7 @@ export default function App() {
         {view === "favorites" && <FavoritesView />}
         {view === "history" && <HistoryView />}
         {view === "detail" && <DetailView />}
+        {view === "settings" && <SettingsView />}
       </main>
       <PlayerOverlay />
     </div>

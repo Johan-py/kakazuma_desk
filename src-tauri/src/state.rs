@@ -1,5 +1,6 @@
 use std::sync::{Arc, Mutex};
 
+use crate::provider::ProviderRegistry;
 use crate::services::{AnimeService, BufferService, FavoriteService, HistoryService, PlayerService};
 use crate::settings::SettingsService;
 
@@ -11,4 +12,5 @@ pub struct AppState {
     pub player: Mutex<PlayerService>,
     pub settings: Arc<SettingsService>,
     pub buffer: BufferService,
+    pub provider: Arc<ProviderRegistry>,
 }

@@ -1,6 +1,9 @@
 use tauri::State;
 
-use crate::domain::{Anime, AnimeDetail, CatalogFilter, CatalogPage, FavoriteEntry, Tag, VideoSource, WatchHistoryEntry};
+use crate::domain::{
+    Anime, AnimeDetail, CatalogFilter, CatalogPage, FavoriteEntry, ProviderInfo, ProviderOption,
+    Tag, VideoSource, WatchHistoryEntry,
+};
 use crate::error::AppError;
 use crate::services::{BufferStatus, PlayerCommand};
 use crate::settings::BufferConfig;
@@ -14,6 +17,41 @@ pub async fn search_anime(state: State<'_, AppState>, query: String) -> Result<V
         return Ok(Vec::new());
     }
     state.anime.search(&q).await
+}
+
+/// Fuente por defecto y opciones disponibles.
+#[tauri::command]
+pub fn get_provider(state: State<'_, AppState>) -> ProviderInfo {
+    provider_info(&state)
+}
+
+/// Cambia la fuente por defecto (persistida) y resetea el proveedor activo.
+#[tauri::command]
+pub async fn set_provider(
+    state: State<'_, AppState>,
+    provider: String,
+) -> Result<ProviderInfo, AppError> {
+    if !state.provider.set_default(&provider) {
+        return Err(AppError::Config(format!(
+            "proveedor desconocido: {provider}"
+        )));
+    }
+    state.settings.set_provider_key(&provider).await?;
+    Ok(provider_info(&state))
+}
+
+fn provider_info(state: &AppState) -> ProviderInfo {
+    let current = state.settings.provider_key();
+    let available: Vec<ProviderOption> = state
+        .provider
+        .list()
+        .into_iter()
+        .map(|d| ProviderOption {
+            key: d.key.to_string(),
+            name: d.name.to_string(),
+        })
+        .collect();
+    ProviderInfo { current, available }
 }
 
 /// Detalle completo de un anime (info + episodios), persistido localmente.

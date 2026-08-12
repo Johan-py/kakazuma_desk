@@ -6,11 +6,13 @@ const TABS: { id: View; label: string }[] = [
   { id: "search", label: "Buscar" },
   { id: "favorites", label: "Favoritos" },
   { id: "history", label: "Historial" },
+  { id: "settings", label: "Ajustes" },
 ];
 
 export function Navbar() {
   const view = useAppStore((s) => s.view);
   const setView = useAppStore((s) => s.setView);
+  const goBack = useAppStore((s) => s.goBack);
   const setViewTo = (v: View) => {
     if (v === "home") useAppStore.getState().loadHome();
     if (v === "favorites") useAppStore.getState().loadFavorites();
@@ -21,13 +23,23 @@ export function Navbar() {
   return (
     <header className="fixed top-0 z-40 w-full bg-gradient-to-b from-bg via-bg/90 to-transparent px-6 py-4">
       <div className="mx-auto flex max-w-[1400px] items-center justify-between">
-        <button
-          onClick={() => setViewTo("home")}
-          className="text-2xl font-black tracking-tight"
-          style={{ color: "#E50914" }}
-        >
-          KAKAZUMA
-        </button>
+        <div className="flex flex-col items-start">
+          <button
+            onClick={() => setViewTo("home")}
+            className="text-2xl font-black tracking-tight"
+            style={{ color: "#E50914" }}
+          >
+            KAKAZUMA
+          </button>
+          {view === "detail" && (
+            <button
+              onClick={goBack}
+              className="mt-1 flex items-center gap-1 text-xs text-muted transition-colors hover:text-text"
+            >
+              <span aria-hidden>←</span> Volver
+            </button>
+          )}
+        </div>
         <nav className="flex items-center gap-1">
           {TABS.map((t) => (
             <button

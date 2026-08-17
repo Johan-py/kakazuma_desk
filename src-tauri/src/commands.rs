@@ -5,7 +5,7 @@ use crate::domain::{
     Tag, VideoSource, WatchHistoryEntry,
 };
 use crate::error::AppError;
-use crate::services::{BufferStatus, PlayerCommand};
+use crate::services::BufferStatus;
 use crate::settings::BufferConfig;
 use crate::state::AppState;
 
@@ -141,20 +141,43 @@ pub async fn clear_history(state: State<'_, AppState>) -> Result<(), AppError> {
     state.history.clear().await
 }
 
-/// Resuelve el video y arranca la reproducción en libmpv.
+/// Resuelve el video y la URL de reproducción (con buffer local si disponible).
 #[tauri::command]
 pub async fn play_episode(
     state: State<'_, AppState>,
     slug: String,
     number: i32,
-    title: String,
-    start: f64,
+    _title: String,
+    _start: f64,
 ) -> Result<VideoSource, AppError> {
-    let source = state.anime.resolve_video(&slug, number).await?;
+    let mut source = state.anime.resolve_video(&slug, number).await?;
     let url = state.buffer.resolve_playback_url(&source, &slug, number).await;
-    let player = state.player.lock().unwrap();
-    player.play(&slug, number, &url, &title, start);
+    source.url = url;
     Ok(source)
+}
+
+/// Actualiza el estado del reproductor desde el frontend (HTML5 video).
+/// La URL de reproducción se almacena para que el buffer pueda observarla.
+#[tauri::command]
+pub fn update_player_state(
+    state: State<'_, AppState>,
+    slug: Option<String>,
+    number: i32,
+    loaded: bool,
+    playing: bool,
+    position: f64,
+    duration: f64,
+    buffering: bool,
+) {
+    if let Ok(mut s) = state.player_state.lock() {
+        s.slug = slug;
+        s.number = number;
+        s.loaded = loaded;
+        s.playing = playing;
+        s.position = position;
+        s.duration = duration;
+        s.buffering = buffering;
+    }
 }
 
 /// Smart Buffer: configuración.
@@ -191,55 +214,4 @@ pub fn buffer_clear_cache(state: State<'_, AppState>) -> Result<u64, AppError> {
 #[tauri::command]
 pub fn buffer_pause(state: State<'_, AppState>, paused: bool) {
     state.buffer.set_manual_pause(paused);
-}
-
-/// Controles del reproductor.
-#[tauri::command]
-pub fn player_pause(state: State<'_, AppState>) {
-    state.player.lock().unwrap().send(PlayerCommand::Pause);
-}
-
-#[tauri::command]
-pub fn player_resume(state: State<'_, AppState>) {
-    state.player.lock().unwrap().send(PlayerCommand::Resume);
-}
-
-#[tauri::command]
-pub fn player_toggle_pause(state: State<'_, AppState>) {
-    state.player.lock().unwrap().send(PlayerCommand::TogglePause);
-}
-
-#[tauri::command]
-pub fn player_seek(state: State<'_, AppState>, position: f64) {
-    state.player.lock().unwrap().send(PlayerCommand::Seek(position.max(0.0)));
-}
-
-#[tauri::command]
-pub fn player_set_speed(state: State<'_, AppState>, speed: f64) {
-    state.player.lock().unwrap().send(PlayerCommand::SetSpeed(speed));
-}
-
-#[tauri::command]
-pub fn player_set_volume(state: State<'_, AppState>, volume: i64) {
-    state.player.lock().unwrap().send(PlayerCommand::SetVolume(volume));
-}
-
-#[tauri::command]
-pub fn player_toggle_mute(state: State<'_, AppState>) {
-    state.player.lock().unwrap().send(PlayerCommand::ToggleMute);
-}
-
-#[tauri::command]
-pub fn player_fullscreen(state: State<'_, AppState>, enabled: bool) {
-    state.player.lock().unwrap().send(PlayerCommand::SetFullscreen(enabled));
-}
-
-#[tauri::command]
-pub fn player_stop(state: State<'_, AppState>) {
-    state.player.lock().unwrap().send(PlayerCommand::Stop);
-}
-
-#[tauri::command]
-pub fn player_get_state(state: State<'_, AppState>) -> crate::services::PlayerState {
-    state.player.lock().unwrap().get_state()
 }

@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { api } from "../lib/api";
 import { useAppStore } from "../stores/useAppStore";
 
 function fmt(t: number): string {
@@ -14,10 +13,13 @@ function fmt(t: number): string {
 
 export function PlayerOverlay() {
   const player = useAppStore((s) => s.player);
-  const buffer = useAppStore((s) => s.buffer);
-  const visible = player.loaded && !player.fullscreen;
+  const view = useAppStore((s) => s.view);
+  const sendCommand = useAppStore((s) => s.sendCommand);
   const [drag, setDrag] = useState(false);
   const [scrub, setScrub] = useState(0);
+
+  const isDetail = view === "detail";
+  const visible = player.loaded && player.videoUrl && !isDetail;
 
   useEffect(() => {
     if (!drag) setScrub(player.position);
@@ -48,9 +50,9 @@ export function PlayerOverlay() {
               const v = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
               setScrub(v * player.duration);
             }}
-            onMouseUp={async () => {
+            onMouseUp={() => {
               if (drag) {
-                api.playerSeek(scrub);
+                sendCommand({ type: "seek", position: scrub });
                 setDrag(false);
               }
             }}
@@ -68,36 +70,13 @@ export function PlayerOverlay() {
 
         <div className="flex items-center gap-2">
           <button
-            onClick={() => api.playerTogglePause()}
+            onClick={() => sendCommand({ type: "togglePause" })}
             className="rounded-md bg-primary px-4 py-2 text-sm font-bold text-white hover:bg-primary-hover"
           >
             {player.playing ? "⏸" : "▶"}
           </button>
           <button
-            onClick={() => api.playerToggleMute()}
-            className="rounded-md bg-surface px-3 py-2 text-sm hover:bg-surface-hover"
-            title={player.muted ? "Desmutear" : "Mutear"}
-          >
-            {player.muted ? "🔇" : "🔊"}
-          </button>
-          <select
-            value={player.speed}
-            onChange={(e) => api.playerSetSpeed(Number(e.target.value))}
-            className="rounded-md bg-surface px-2 py-2 text-sm focus:outline-none"
-          >
-            {[0.5, 0.75, 1, 1.25, 1.5, 2].map((s) => (
-              <option key={s} value={s}>{s}x</option>
-            ))}
-          </select>
-          <button
-            onClick={() => api.playerFullscreen(true)}
-            className="rounded-md bg-surface px-3 py-2 text-sm hover:bg-surface-hover"
-            title="Pantalla completa"
-          >
-            ⛶
-          </button>
-          <button
-            onClick={() => api.playerStop()}
+            onClick={() => sendCommand({ type: "pause" })}
             className="rounded-md bg-surface px-3 py-2 text-sm text-muted hover:text-primary"
             title="Detener"
           >
@@ -105,25 +84,6 @@ export function PlayerOverlay() {
           </button>
         </div>
       </div>
-      {player.error && (
-        <p className="mt-2 text-center text-xs text-primary">{player.error}</p>
-      )}
-      {buffer.enabled && buffer.current_episode && (
-        <div className="mx-auto mt-2 flex max-w-[1400px] items-center gap-2 text-[11px] text-muted">
-          <span className="shrink-0">Buffer</span>
-          <div className="h-1 w-40 overflow-hidden rounded-full bg-surface-hover">
-            <div
-              className="h-full rounded-full bg-emerald-500/80"
-              style={{
-                width: `${Math.max(0, Math.min(100, buffer.current_episode.percent_done))}%`,
-              }}
-            />
-          </div>
-          <span className="shrink-0 tabular-nums">
-            {buffer.current_episode.percent_done}% · {buffer.queue.length} en cola
-          </span>
-        </div>
-      )}
     </div>
   );
 }

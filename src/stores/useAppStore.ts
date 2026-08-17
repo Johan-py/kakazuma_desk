@@ -8,7 +8,7 @@ import type {
   BufferStatus,
   CatalogFilter,
   CatalogPage,
-  PlayerProgressEvent,
+  PlayerCommandAction,
   PlayerState,
   ProviderInfo,
   Tag,
@@ -73,8 +73,12 @@ interface AppStore {
 
   player: PlayerState;
   playerVisible: boolean;
+  commandQueue: PlayerCommandAction[];
   initPlayer: () => Promise<void>;
-  refreshPlayer: () => Promise<void>;
+  setPlayerState: (patch: Partial<PlayerState>) => void;
+  sendCommand: (cmd: PlayerCommandAction) => void;
+  consumeCommand: () => PlayerCommandAction | undefined;
+  stopPlayer: () => void;
 
   buffer: BufferStatus;
   bufferConfig: BufferConfig | null;
@@ -233,6 +237,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
     phase: "idle",
     loaded: false,
     playing: false,
+    buffering: false,
     position: 0,
     duration: 0,
     speed: 1,
@@ -243,38 +248,63 @@ export const useAppStore = create<AppStore>((set, get) => ({
     slug: null,
     number: 0,
     error: null,
+    videoUrl: null,
   },
   playerVisible: false,
+  commandQueue: [],
   initPlayer: async () => {
-    await get().refreshPlayer();
-    const onState = await listen<PlayerState>("player://state", (e) => {
-      set({ player: e.payload });
-    });
-    const onProgress = await listen<PlayerProgressEvent>("player://progress", (e) => {
-      // Segunda barrera de protección: descartar eventos de sesiones antiguas.
-      if (e.payload.session_id < get().player.session_id) return;
-      get().refreshPlayer();
-    });
-    const onEnd = await listen<PlayerProgressEvent>("player://end", (e) => {
-      // Un `player://end` de una reproducción anterior no debe mostrar el
-      // episodio actual como finalizado.
-      if (e.payload.session_id < get().player.session_id) return;
-      const p = { ...get().player, playing: false };
-      set({ player: p });
-      get().loadHistory();
-    });
-    const onError = await listen<string>("player://error", (e) => {
-      set({ player: { ...get().player, error: e.payload } });
-    });
-    window.__unlisteners = [onState, onProgress, onEnd, onError];
+    // HTML5 player: state is managed by the VideoPlayer component.
   },
-  refreshPlayer: async () => {
-    try {
-      const state = await api.playerGetState();
-      set({ player: state, playerVisible: state.loaded });
-    } catch {
-      // sin reproductor disponible
-    }
+  setPlayerState: (patch) => {
+    set((s) => {
+      const next = { ...s.player, ...patch };
+      return { player: next, playerVisible: next.loaded && !!next.videoUrl };
+    });
+    // Sync with backend so buffer service can observe playback state.
+    const p = useAppStore.getState().player;
+    api.updatePlayerState(
+      p.slug,
+      p.number,
+      p.loaded,
+      p.playing,
+      p.position,
+      p.duration,
+      p.buffering
+    ).catch(() => {});
+  },
+  sendCommand: (cmd) => {
+    set((s) => ({ commandQueue: [...s.commandQueue, cmd] }));
+  },
+  consumeCommand: () => {
+    const q = get().commandQueue;
+    if (q.length === 0) return undefined;
+    const [first, ...rest] = q;
+    set({ commandQueue: rest });
+    return first as PlayerCommandAction;
+  },
+  stopPlayer: () => {
+    set({
+      player: {
+        session_id: 0,
+        phase: "idle",
+        loaded: false,
+        playing: false,
+        buffering: false,
+        position: 0,
+        duration: 0,
+        speed: 1,
+        volume: 100,
+        muted: false,
+        fullscreen: false,
+        title: null,
+        slug: null,
+        number: 0,
+        error: null,
+        videoUrl: null,
+      },
+      playerVisible: false,
+      commandQueue: [],
+    });
   },
 
   buffer: {

@@ -17,7 +17,7 @@ use crate::infra::db::Db;
 use crate::infra::http::{HttpClient, HttpConfig};
 use crate::infra::segcache::SegmentCache;
 use crate::provider::ProviderRegistry;
-use crate::services::{AnimeService, BufferService, FavoriteService, HistoryService, PlayerCommand, PlayerService};
+use crate::services::{AnimeService, BufferService, FavoriteService, HistoryService, PlayerState};
 use crate::settings::SettingsService;
 use crate::state::AppState;
 
@@ -76,8 +76,8 @@ pub fn run() {
             buffer_cache.set_limit(cfg.buffer_cache_limit_mb);
 
             let rt = tauri::async_runtime::handle();
-            let player = PlayerService::spawn(app_handle.clone(), pool.clone(), rt.clone());
-            let player_state = player.state_handle();
+            // PlayerState shared with buffer for playback observation.
+            let player_state = std::sync::Arc::new(Mutex::new(PlayerState::default()));
             let buffer = BufferService::spawn(
                 app_handle.clone(),
                 anime.clone(),
@@ -85,7 +85,7 @@ pub fn run() {
                 http,
                 buffer_cache,
                 settings.clone(),
-                player_state,
+                player_state.clone(),
                 rt,
             );
 
@@ -93,7 +93,7 @@ pub fn run() {
                 anime,
                 history,
                 favorites,
-                player: Mutex::new(player),
+                player_state,
                 settings,
                 buffer,
                 provider: providers,
@@ -119,16 +119,7 @@ pub fn run() {
             commands::save_progress,
             commands::clear_history,
             commands::play_episode,
-            commands::player_pause,
-            commands::player_resume,
-            commands::player_toggle_pause,
-            commands::player_seek,
-            commands::player_set_speed,
-            commands::player_set_volume,
-            commands::player_toggle_mute,
-            commands::player_fullscreen,
-            commands::player_stop,
-            commands::player_get_state,
+            commands::update_player_state,
             commands::buffer_get_config,
             commands::buffer_set_config,
             commands::buffer_get_status,
@@ -137,14 +128,11 @@ pub fn run() {
         ])
         .build(tauri::generate_context!())
         .expect("error al construir la aplicación Kakazuma")
-        .run(|app_handle, event| {
+        .run(|_app_handle, event| {
             use tauri::RunEvent;
             match event {
                 RunEvent::ExitRequested { .. } | RunEvent::Exit => {
-                    if let Some(state) = app_handle.try_state::<AppState>() {
-                        if let Ok(player) = state.player.lock() {
-                            player.send(PlayerCommand::Stop);
-                        }
+                    if let Some(state) = _app_handle.try_state::<AppState>() {
                         state.buffer.shutdown();
                     }
                 }

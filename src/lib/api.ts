@@ -7,7 +7,6 @@ import type {
   CatalogFilter,
   CatalogPage,
   FavoriteEntry,
-  PlayerState,
   ProviderInfo,
   Tag,
   VideoSource,
@@ -62,16 +61,24 @@ export const api = {
   playEpisode: (slug: string, number: number, title: string, start: number) =>
     call<VideoSource>("play_episode", { slug, number, title, start }),
 
-  playerPause: () => call<void>("player_pause"),
-  playerResume: () => call<void>("player_resume"),
-  playerTogglePause: () => call<void>("player_toggle_pause"),
-  playerSeek: (position: number) => call<void>("player_seek", { position }),
-  playerSetSpeed: (speed: number) => call<void>("player_set_speed", { speed }),
-  playerSetVolume: (volume: number) => call<void>("player_set_volume", { volume }),
-  playerToggleMute: () => call<void>("player_toggle_mute"),
-  playerFullscreen: (enabled: boolean) => call<void>("player_fullscreen", { enabled }),
-  playerStop: () => call<void>("player_stop"),
-  playerGetState: () => call<PlayerState>("player_get_state"),
+  updatePlayerState: (
+    slug: string | null,
+    number: number,
+    loaded: boolean,
+    playing: boolean,
+    position: number,
+    duration: number,
+    buffering: boolean
+  ) =>
+    call<void>("update_player_state", {
+      slug,
+      number,
+      loaded,
+      playing,
+      position,
+      duration,
+      buffering,
+    }),
 
   bufferGetConfig: () => call<BufferConfig>("buffer_get_config"),
   bufferSetConfig: (config: BufferConfig) => call<BufferConfig>("buffer_set_config", { config }),

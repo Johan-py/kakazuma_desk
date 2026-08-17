@@ -22,7 +22,6 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "htt
 sysinfo = "0.33"
 sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "migrate"] }
 scraper = "0.21"
-mpv = "0.2"
 lru = "0.12"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
@@ -33,7 +32,6 @@ percent-encoding = "2"
 sha2 = "0.10"
 regex = "1"
 futures-util = "0.3"
-libc = "0.2"
 url = "2"
 base64 = "0.22"
 

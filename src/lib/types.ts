@@ -102,6 +102,7 @@ export interface PlayerState {
   phase: PlayerPhase;
   loaded: boolean;
   playing: boolean;
+  buffering: boolean;
   position: number;
   duration: number;
   speed: number;
@@ -112,15 +113,17 @@ export interface PlayerState {
   slug: string | null;
   number: number;
   error: string | null;
+  videoUrl: string | null;
 }
 
-export interface PlayerProgressEvent {
-  session_id: number;
-  slug: string;
-  number: number;
-  position: number;
-  duration: number;
-}
+export type PlayerCommandAction =
+  | { type: "play" }
+  | { type: "pause" }
+  | { type: "togglePause" }
+  | { type: "seek"; position: number }
+  | { type: "setSpeed"; speed: number }
+  | { type: "setVolume"; volume: number }
+  | { type: "setMute"; muted: boolean };
 
 export interface BufferedEpisode {
   slug: string;

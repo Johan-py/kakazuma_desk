@@ -11,6 +11,7 @@ export function DetailView() {
   const toggleFavorite = useAppStore((s) => s.toggleFavorite);
   const history = useAppStore((s) => s.history);
   const player = useAppStore((s) => s.player);
+  const setPlayerState = useAppStore((s) => s.setPlayerState);
   const [isFav, setIsFav] = useState(false);
   const [playing, setPlaying] = useState<number | null>(null);
 
@@ -39,7 +40,19 @@ export function DetailView() {
     setPlaying(ep.number);
     const resume = resumeFor.get(ep.number.toString());
     try {
-      await api.playEpisode(slug!, ep.number, ep.title ?? `Episodio ${ep.number}`, resume?.position ?? 0);
+      const source = await api.playEpisode(slug!, ep.number, ep.title ?? `Episodio ${ep.number}`, resume?.position ?? 0);
+      setPlayerState({
+        videoUrl: source.url,
+        slug: slug!,
+        number: ep.number,
+        title: ep.title ?? `Episodio ${ep.number}`,
+        position: resume?.position ?? 0,
+        loaded: false,
+        playing: false,
+        error: null,
+        phase: "loading",
+        session_id: Date.now(),
+      });
     } catch (e) {
       console.error(e);
     } finally {
